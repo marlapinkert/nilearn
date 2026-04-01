@@ -100,12 +100,16 @@ def _get_vertexcolor(
     absolute_threshold=None,
     bg_map=None,
     bg_on_data=None,
+    bg_darkness=1,
 ):
     """Get the color of the vertices."""
     bg_data = get_bg_data(bg_map, len(surf_map))
 
     # scale background map if need be
     bg_data = _normalize_bg_data(bg_data)
+
+    # compress toward mid-gray to reduce contrast (bg_darkness=1 → no change)
+    bg_data = 0.5 + (bg_data - 0.5) * bg_darkness
 
     bg_colors = plt.get_cmap("Greys")(bg_data)
 

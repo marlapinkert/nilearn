@@ -66,14 +66,16 @@ function getConfig() {
     return config;
 }
 
-function getCamera(plotDivId, viewSelectId) {
+function getCamera(plotDivId, viewSelectId, customCamera) {
     let view = $("#" + viewSelectId).val();
     if (view === "custom") {
         try {
-            return $("#" + plotDivId)[0].layout.scene.camera;
-        } catch (e) {
-            return {};
-        }
+            let layoutCamera = $("#" + plotDivId)[0].layout.scene.camera;
+            if (layoutCamera && Object.keys(layoutCamera).length > 0) {
+                return layoutCamera;
+            }
+        } catch (e) {}
+        return customCamera || {};
     }
     let cameras = {
         "left": {eye: {x: -1.7, y: 0, z: 0},
@@ -100,9 +102,9 @@ function getCamera(plotDivId, viewSelectId) {
 
 }
 
-function getLayout(plotDivId, viewSelectId, blackBg) {
+function getLayout(plotDivId, viewSelectId, blackBg, customCamera) {
 
-    let camera = getCamera(plotDivId, viewSelectId);
+    let camera = getCamera(plotDivId, viewSelectId, customCamera);
     let axisConfig = getAxisConfig();
 
     let height = Math.min($(window).outerHeight() * .9,

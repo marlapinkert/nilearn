@@ -81,6 +81,7 @@ AXIS_CONFIG = {
 LAYOUT = {
     "scene": {
         "dragmode": "orbit",
+        "aspectmode": "data",
         **{f"{dim}axis": AXIS_CONFIG for dim in ("x", "y", "z")},
     },
     "paper_bgcolor": "#fff",

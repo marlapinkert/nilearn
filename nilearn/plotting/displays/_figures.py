@@ -102,6 +102,8 @@ class PlotlySurfaceFigure(SurfaceFigure):
                 "Plotly is required to use 'PlotlySurfaceFigure'."
             )
 
+        import plotly.graph_objects as go
+
         if figure is not None and not isinstance(figure, go.Figure):
             raise TypeError(
                 "'PlotlySurfaceFigure' accepts only plotly Figure objects."

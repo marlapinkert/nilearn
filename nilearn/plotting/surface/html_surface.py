@@ -40,6 +40,54 @@ from nilearn.surface.surface import (
 ALLOWED_VIEWS = {"left", "right", "front", "back", "top", "bottom"}
 
 
+def _check_and_convert_view(view):
+    """Validate ``view`` and convert a custom (elevation, azimuth) tuple.
+
+    Parameters
+    ----------
+    view : :obj:`str` or sequence of 2 :obj:`float`
+
+    Returns
+    -------
+    view_str : :obj:`str`
+        The view name to set in the HTML dropdown.  Always one of
+        ``ALLOWED_VIEWS`` or ``"custom"``.
+    camera : :obj:`dict` or None
+        Plotly camera dict when ``view`` is a tuple, otherwise ``None``.
+    """
+    if isinstance(view, str):
+        check_parameter_in_allowed(view, ALLOWED_VIEWS, "view")
+        return view, None
+    if (
+        isinstance(view, (list, tuple))
+        and len(view) == 2
+        and all(isinstance(v, (int, float)) for v in view)
+    ):
+        elev, azim = view
+        r = 1.7  # match the radius used by the JS preset cameras
+        elev_rad = elev / 360 * 2 * np.pi
+        azim_rad = azim / 360 * 2 * np.pi
+        camera = {
+            "center": {"x": 0, "y": 0, "z": 0},
+            "eye": {
+                "x": float(r * np.cos(azim_rad) * np.cos(elev_rad)),
+                "y": float(r * np.sin(azim_rad) * np.cos(elev_rad)),
+                "z": float(r * np.sin(elev_rad)),
+            },
+            "up": {
+                "x": float(np.sin(elev_rad) * np.cos(azim_rad + np.pi)),
+                "y": float(np.sin(elev_rad) * np.sin(azim_rad + np.pi)),
+                "z": float(np.cos(elev_rad)),
+            },
+        }
+        return "custom", camera
+    raise ValueError(
+        f"Invalid value for 'view': {view!r}.\n"
+        f"Expected one of {sorted(ALLOWED_VIEWS)!r} "
+        "or a sequence of 2 floats (elevation, azimuth) in degrees."
+    )
+
+
 class SurfaceView(HTMLDocument):  # noqa: D101
     pass
 
@@ -55,6 +103,7 @@ def _one_mesh_info(
     bg_on_data=False,
     vmax=None,
     vmin=None,
+    bg_darkness=1,
 ):
     """Prepare info for plotting one surface map on a single mesh.
 
@@ -80,6 +129,7 @@ def _one_mesh_info(
         absolute_threshold=colors["abs_threshold"],
         bg_map=bg_map,
         bg_on_data=bg_on_data,
+        bg_darkness=bg_darkness,
     )
     info["cmin"], info["cmax"] = float(colors["vmin"]), float(colors["vmax"])
     info["black_bg"] = black_bg
@@ -113,6 +163,7 @@ def _full_brain_info(
     vmax=None,
     vmin=None,
     vol_to_surf_kwargs=None,
+    bg_darkness=1,
 ):
     """Project 3D map on cortex; prepare info to plot both hemispheres.
 
@@ -161,6 +212,7 @@ def _full_brain_info(
             absolute_threshold=colors["abs_threshold"],
             bg_map=bg_map,
             bg_on_data=bg_on_data,
+            bg_darkness=bg_darkness,
         )
 
     # also add info for both hemispheres
@@ -193,6 +245,7 @@ def _full_brain_info(
             mesh["curv_left"], mesh["curv_right"]
         ),
         bg_on_data=bg_on_data,
+        bg_darkness=bg_darkness,
     )
     info["cmin"], info["cmax"] = float(colors["vmin"]), float(colors["vmax"])
     info["black_bg"] = black_bg
@@ -231,6 +284,7 @@ def view_img_on_surf(
     title_fontsize=25,
     view="left",
     vol_to_surf_kwargs=None,
+    bg_darkness=1,
 ):
     """Insert a surface plot of a statistical map into an HTML page.
 
@@ -294,9 +348,13 @@ def view_img_on_surf(
     title_fontsize : :obj:`int`, default=25
         Fontsize of the title.
 
-    view : one of {"left", "right", "front", "back", "top", "bottom"}, \
-      default="left"
-        Default view used for displaying the surface.
+    view : one of {"left", "right", "front", "back", "top", "bottom"} \
+      or sequence of 2 :obj:`float`, default="left"
+        Initial camera view when the plot opens.  Either a preset name
+        or a ``(elevation, azimuth)`` pair in degrees that positions the
+        camera at an arbitrary angle.  Elevation of 0 is the equator;
+        positive values look down from above.  Azimuth is measured
+        counter-clockwise from the positive X axis.
 
     vol_to_surf_kwargs : :obj:`dict`, default=None
         Dictionary of keyword arguments that are passed on to
@@ -305,6 +363,12 @@ def view_img_on_surf(
         parameter is especially useful when plotting an atlas. See
         https://nilearn.github.io/stable/auto_examples/01_plotting/plot_3d_map_to_surface_projection.html
         Will default to ``{}`` if ``None`` is passed.
+
+    bg_darkness : :obj:`float` between 0 and 1, default=1
+        Contrast of the background curvature map.  ``1`` keeps the original
+        contrast; lower values compress the gray range toward mid-gray,
+        making the background appear lighter and less contrasted.
+        ``0`` renders a flat, uniform gray.
 
     Returns
     -------
@@ -327,7 +391,7 @@ def view_img_on_surf(
         vol_to_surf_kwargs = {}
 
     stat_map_img = check_niimg_3d(stat_map_img)
-    check_parameter_in_allowed(view, ALLOWED_VIEWS, "view")
+    view, custom_camera = _check_and_convert_view(view)
 
     info = _full_brain_info(
         volume_img=stat_map_img,
@@ -340,6 +404,7 @@ def view_img_on_surf(
         bg_on_data=bg_on_data,
         symmetric_cmap=symmetric_cmap,
         vol_to_surf_kwargs=vol_to_surf_kwargs,
+        bg_darkness=bg_darkness,
     )
     info["colorbar"] = colorbar
     info["cbar_height"] = colorbar_height
@@ -347,6 +412,8 @@ def view_img_on_surf(
     info["title"] = title
     info["title_fontsize"] = title_fontsize
     info["view"] = view
+    if custom_camera is not None:
+        info["camera"] = custom_camera
     return _fill_html_template(info)
 
 
@@ -369,6 +436,7 @@ def view_surf(
     title=None,
     title_fontsize=25,
     view="left",
+    bg_darkness=1,
 ):
     """Insert a surface plot of a surface map into an HTML page.
 
@@ -447,9 +515,19 @@ def view_surf(
     title_fontsize : :obj:`int`, default=25
         Fontsize of the title.
 
-    view : one of {"left", "right", "front", "back", "top", "bottom"}, \
-      default="left"
-        Default view used for displaying the surface.
+    view : one of {"left", "right", "front", "back", "top", "bottom"} \
+      or sequence of 2 :obj:`float`, default="left"
+        Initial camera view when the plot opens.  Either a preset name
+        or a ``(elevation, azimuth)`` pair in degrees that positions the
+        camera at an arbitrary angle.  Elevation of 0 is the equator;
+        positive values look down from above.  Azimuth is measured
+        counter-clockwise from the positive X axis.
+
+    bg_darkness : :obj:`float` between 0 and 1, default=1
+        Contrast of the background ``bg_map``.  ``1`` keeps the original
+        contrast; lower values compress the gray range toward mid-gray,
+        making the background appear lighter and less contrasted.
+        ``0`` renders a flat, uniform gray.
 
     Returns
     -------
@@ -469,7 +547,7 @@ def view_surf(
     surf_map, surf_mesh, bg_map = check_surface_plotting_inputs(
         surf_map, surf_mesh, hemi, bg_map, map_var_name="surf_map"
     )
-    check_parameter_in_allowed(view, ALLOWED_VIEWS, "view")
+    view, custom_camera = _check_and_convert_view(view)
 
     surf_mesh = load_surf_mesh(surf_mesh)
     if surf_map is None:
@@ -489,6 +567,7 @@ def view_surf(
         symmetric_cmap=symmetric_cmap,
         vmax=vmax,
         vmin=vmin,
+        bg_darkness=bg_darkness,
     )
     info["colorbar"] = colorbar
     info["cbar_height"] = colorbar_height
@@ -496,4 +575,6 @@ def view_surf(
     info["title"] = title
     info["title_fontsize"] = title_fontsize
     info["view"] = view
+    if custom_camera is not None:
+        info["camera"] = custom_camera
     return _fill_html_template(info)
